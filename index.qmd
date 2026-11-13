@@ -1,0 +1,264 @@
+---
+title: "North Carolina 2026 Election Results"
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(DT)
+
+# Load 2024 and 2026 precinct-level NCSBE results once
+nc_2024 <- read_tsv("data/north_carolina/results_pct_20241105.txt", show_col_types = FALSE, quote = "")
+nc_2026 <- read_tsv("data/north_carolina/results_pct_20261103.txt", show_col_types = FALSE, quote = "")
+```
+
+## County Shift Map (2024 to 2026)
+
+How counties shifted in the **2026 U.S. Senate election** (Roy Cooper vs. Michael Whatley) compared with the **2024 presidential election** (Kamala Harris vs. Donald Trump):
+
+- **Blue arrows** = shift toward Democrats
+- **Red arrows** = shift toward Republicans
+- **Longer arrows** = bigger change in two-party margin
+
+```{r}
+#| label: nc-shift-map
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5.2
+#| fig-dpi: 300
+
+# Compute 2024 county two-party Democratic margin (US President)
+margin_2024 <- nc_2024 |>
+  filter(`Contest Name` == "US PRESIDENT", `Choice Party` %in% c("DEM", "REP")) |>
+  group_by(County, `Choice Party`) |>
+  summarise(votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = votes, values_fill = 0) |>
+  mutate(dem_margin_2024 = 100 * (DEM - REP) / (DEM + REP)) |>
+  select(County, dem_margin_2024)
+
+# Compute 2026 county two-party Democratic margin (US Senate)
+margin_2026 <- nc_2026 |>
+  filter(`Contest Name` == "US SENATE", `Choice Party` %in% c("DEM", "REP")) |>
+  group_by(County, `Choice Party`) |>
+  summarise(votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = votes, values_fill = 0) |>
+  mutate(dem_margin_2026 = 100 * (DEM - REP) / (DEM + REP)) |>
+  select(County, dem_margin_2026)
+
+# Load NC county polygons and calculate centroids for arrow origins
+nc_counties <- st_as_sf(maps::map("county", "north carolina", plot = FALSE, fill = TRUE)) |>
+  st_make_valid() |>
+  mutate(County = str_to_upper(str_remove(ID, "^north carolina,"))) |>
+  left_join(margin_2024, by = "County") |>
+  left_join(margin_2026, by = "County") |>
+  mutate(
+    shift = dem_margin_2026 - dem_margin_2024,
+    direction = factor(
+      if_else(shift >= 0, "Shift toward Democrats", "Shift toward Republicans"),
+      levels = c("Shift toward Democrats", "Shift toward Republicans")
+    )
+  )
+
+centroids <- nc_counties |>
+  st_centroid() |>
+  mutate(
+    lon = st_coordinates(geom)[, 1],
+    lat = st_coordinates(geom)[, 2],
+    scale_k = 0.016,
+    lon_end = lon + if_else(shift >= 0, -abs(shift) * scale_k, abs(shift) * scale_k),
+    lat_end = lat + abs(shift) * scale_k * 0.65
+  ) |>
+  st_drop_geometry()
+
+ggplot() +
+  geom_sf(data = nc_counties, fill = "#f3f4f6", color = "white", linewidth = 0.4) +
+  geom_segment(
+    data = centroids,
+    aes(
+      x = lon,
+      y = lat,
+      xend = lon_end,
+      yend = lat_end,
+      color = direction
+    ),
+    linewidth = 0.75,
+    alpha = 0.9,
+    arrow = arrow(length = unit(0.14, "cm"), type = "closed"),
+    show.legend = TRUE
+  ) +
+  scale_color_manual(
+    values = c(
+      "Shift toward Democrats" = "#1d68c4",
+      "Shift toward Republicans" = "#d73027"
+    ),
+    drop = FALSE,
+    name = NULL
+  ) +
+  coord_sf(clip = "off") +
+  labs(
+    title = "Shift in Margin from 2024 President to 2026 U.S. Senate",
+    subtitle = "Each arrow starts at a county's center; longer arrows indicate a larger shift in two-party margin",
+    caption = "Source: North Carolina State Board of Elections (NCSBE)"
+  ) +
+  theme_void(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", size = 15, margin = margin(b = 4)),
+    plot.subtitle = element_text(color = "#4b5563", size = 10.5, margin = margin(b = 10)),
+    plot.caption = element_text(color = "#6b7280", size = 9, margin = margin(t = 8)),
+    legend.position = "top",
+    legend.text = element_text(size = 10.5),
+    plot.margin = margin(10, 15, 10, 15)
+  )
+```
+
+## Closest Precincts Map
+
+Which voting precincts had the smallest margins of victory in the **2026 U.S. Senate race**? Out of 2,626 real precincts across North Carolina, **two ended in an exact tie** and **two more were decided by a single vote**. Hover or click any precinct marker (or zoom in to see exact precinct boundaries) to inspect the vote totals.
+
+```{r}
+#| label: closest-precincts-map
+#| echo: false
+#| message: false
+#| warning: false
+
+# Read official 2026 NCSBE voting precinct boundaries directly from zip
+precincts_sf <- st_read(
+  "/vsizip/data/north_carolina/SBE_PRECINCTS_20260824.zip/SBE_PRECINCTS_20260824.shp",
+  quiet = TRUE
+)
+
+# Calculate two-party margin for every real precinct in 2026 US Senate and rank them
+precinct_margins <- nc_2026 |>
+  filter(
+    `Contest Name` == "US SENATE",
+    `Real Precinct` == "Y",
+    `Choice Party` %in% c("DEM", "REP")
+  ) |>
+  group_by(County, Precinct, `Choice Party`) |>
+  summarise(votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = votes, values_fill = 0) |>
+  filter(DEM + REP > 0) |>
+  mutate(
+    total_two_party = DEM + REP,
+    vote_diff = abs(DEM - REP),
+    pct_margin = 100 * vote_diff / total_two_party,
+    winner = factor(
+      case_when(
+        DEM == REP ~ "Exact Tie",
+        DEM > REP ~ "Roy Cooper (DEM)",
+        TRUE ~ "Michael Whatley (REP)"
+      ),
+      levels = c("Exact Tie", "Roy Cooper (DEM)", "Michael Whatley (REP)")
+    )
+  ) |>
+  arrange(pct_margin, vote_diff, desc(total_two_party)) |>
+  mutate(rank = min_rank(pct_margin))
+
+# Join top 50 closest precincts to polygons and transform to WGS84 (EPSG:4326) for Leaflet
+top50_polys <- precincts_sf |>
+  inner_join(
+    precinct_margins |> slice_head(n = 50),
+    by = c("county_nam" = "County", "prec_id" = "Precinct")
+  ) |>
+  st_make_valid() |>
+  st_transform(4326) |>
+  arrange(pct_margin, vote_diff, desc(total_two_party)) |>
+  mutate(
+    precinct_label = if_else(
+      enr_desc == prec_id,
+      prec_id,
+      paste0(prec_id, " — ", str_to_title(enr_desc))
+    ),
+    popup_html = paste0(
+      "<strong>Rank #", rank, ": ", str_to_title(county_nam), " County</strong><br>",
+      "Precinct: ", precinct_label, "<br><hr style='margin:4px 0;'>",
+      "Roy Cooper (DEM): <strong>", scales::comma(DEM), "</strong><br>",
+      "Michael Whatley (REP): <strong>", scales::comma(REP), "</strong><br>",
+      "Margin: <strong>", vote_diff, if_else(vote_diff == 1, " vote", " votes"),
+      sprintf(" (%.2f%%)", pct_margin), "</strong> — ", winner
+    ),
+    hover_label = paste0(
+      "#", rank, " ", str_to_title(county_nam), " (", prec_id, "): ",
+      if_else(vote_diff == 0, "Exact Tie!", paste0(winner, " +", vote_diff, " (", sprintf("%.2f%%", pct_margin), ")"))
+    )
+  )
+
+top50_points <- top50_polys |>
+  st_centroid()
+
+winner_pal <- colorFactor(
+  palette = c("#7c3aed", "#1d68c4", "#d73027"),
+  levels = c("Exact Tie", "Roy Cooper (DEM)", "Michael Whatley (REP)")
+)
+
+leaflet(height = "520px") |>
+  addProviderTiles(providers$CartoDB.Positron) |>
+  addPolygons(
+    data = top50_polys,
+    fillColor = ~winner_pal(winner),
+    fillOpacity = 0.35,
+    color = ~winner_pal(winner),
+    weight = 2,
+    popup = ~popup_html,
+    label = ~hover_label
+  ) |>
+  addCircleMarkers(
+    data = top50_points,
+    radius = ~if_else(rank <= 10, 8, 6),
+    fillColor = ~winner_pal(winner),
+    fillOpacity = 0.9,
+    color = "#ffffff",
+    weight = 1.8,
+    popup = ~popup_html,
+    label = ~hover_label
+  ) |>
+  addLegend(
+    position = "bottomleft",
+    pal = winner_pal,
+    values = top50_polys$winner,
+    title = "50 Closest Precincts",
+    opacity = 0.9
+  )
+```
+
+### Closest Precincts Ranked
+
+```{r}
+#| label: closest-precincts-table
+#| echo: false
+
+precinct_margins |>
+  slice_head(n = 100) |>
+  left_join(
+    st_drop_geometry(precincts_sf) |> select(county_nam, prec_id, enr_desc),
+    by = c("County" = "county_nam", "Precinct" = "prec_id")
+  ) |>
+  mutate(
+    Precinct = if_else(
+      is.na(enr_desc) | enr_desc == Precinct,
+      Precinct,
+      paste0(Precinct, " (", str_to_title(enr_desc), ")")
+    ),
+    `% Margin` = sprintf("%.2f%%", pct_margin)
+  ) |>
+  select(
+    Rank = rank,
+    County,
+    Precinct,
+    `Cooper (DEM)` = DEM,
+    `Whatley (REP)` = REP,
+    `Vote Diff` = vote_diff,
+    `% Margin`,
+    Outcome = winner
+  ) |>
+  datatable(
+    rownames = FALSE,
+    options = list(pageLength = 10, autoWidth = TRUE)
+  )
+```
