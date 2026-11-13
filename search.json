@@ -2,9 +2,23 @@
   {
     "objectID": "index.html",
     "href": "index.html",
-    "title": "Election 2026",
+    "title": "North Carolina 2026 Election Results",
     "section": "",
-    "text": "This is a Quarto website.\nTo learn more about Quarto websites visit https://quarto.org/docs/websites."
+    "text": "How counties shifted in the 2026 U.S. Senate election (Roy Cooper vs. Michael Whatley) compared with the 2024 presidential election (Kamala Harris vs. Donald Trump):\n\nBlue arrows = shift toward Democrats\nRed arrows = shift toward Republicans\nLonger arrows = bigger change in two-party margin"
+  },
+  {
+    "objectID": "index.html#county-shift-map-2024-to-2026",
+    "href": "index.html#county-shift-map-2024-to-2026",
+    "title": "North Carolina 2026 Election Results",
+    "section": "",
+    "text": "How counties shifted in the 2026 U.S. Senate election (Roy Cooper vs. Michael Whatley) compared with the 2024 presidential election (Kamala Harris vs. Donald Trump):\n\nBlue arrows = shift toward Democrats\nRed arrows = shift toward Republicans\nLonger arrows = bigger change in two-party margin"
+  },
+  {
+    "objectID": "index.html#closest-precincts-map",
+    "href": "index.html#closest-precincts-map",
+    "title": "North Carolina 2026 Election Results",
+    "section": "Closest Precincts Map",
+    "text": "Closest Precincts Map\nWhich voting precincts had the smallest margins of victory in the 2026 U.S. Senate race? Out of 2,626 real precincts across North Carolina, two ended in an exact tie and two more were decided by a single vote. Hover or click any precinct marker (or zoom in to see exact precinct boundaries) to inspect the vote totals.\n\n\n\n\n\n\n\nClosest Precincts Ranked"
   },
   {
     "objectID": "about.html",
