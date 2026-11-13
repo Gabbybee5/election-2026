@@ -198,7 +198,15 @@ winner_pal <- colorFactor(
 )
 
 leaflet(height = "520px") |>
-  addProviderTiles(providers$CartoDB.Positron) |>
+  addTiles() |>
+  addPolygons(
+    data = st_transform(nc_counties, 4326),
+    fillColor = "#f8fafc",
+    fillOpacity = 0.25,
+    color = "#64748b",
+    weight = 1,
+    label = ~str_to_title(County)
+  ) |>
   addPolygons(
     data = top50_polys,
     fillColor = ~winner_pal(winner),
