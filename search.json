@@ -4,27 +4,41 @@
     "href": "index.html",
     "title": "North Carolina 2026 Election Results",
     "section": "",
-    "text": "How counties shifted in the 2026 U.S. Senate election (Roy Cooper vs. Michael Whatley) compared with the 2024 presidential election (Kamala Harris vs. Donald Trump):\n\nBlue arrows = shift toward Democrats\nRed arrows = shift toward Republicans\nLonger arrows = bigger change in two-party margin"
+    "text": "Featured Map: 🗺️ Closest Precincts (Default) 🔄 County Shift Map"
   },
   {
-    "objectID": "index.html#county-shift-map-2024-to-2026",
-    "href": "index.html#county-shift-map-2024-to-2026",
+    "objectID": "index.html#closest-precincts-ranked",
+    "href": "index.html#closest-precincts-ranked",
     "title": "North Carolina 2026 Election Results",
+    "section": "Closest Precincts Ranked",
+    "text": "Closest Precincts Ranked\nBelow are the 50 closest precincts across the state ranked by margin of victory. Use the search bar to locate specific precincts or counties."
+  },
+  {
+    "objectID": "comparison.html",
+    "href": "comparison.html",
+    "title": "Multi-State Election Comparisons",
     "section": "",
-    "text": "How counties shifted in the 2026 U.S. Senate election (Roy Cooper vs. Michael Whatley) compared with the 2024 presidential election (Kamala Harris vs. Donald Trump):\n\nBlue arrows = shift toward Democrats\nRed arrows = shift toward Republicans\nLonger arrows = bigger change in two-party margin"
-  },
-  {
-    "objectID": "index.html#closest-precincts-map",
-    "href": "index.html#closest-precincts-map",
-    "title": "North Carolina 2026 Election Results",
-    "section": "Closest Precincts Map",
-    "text": "Closest Precincts Map\nWhich voting precincts had the smallest margins of victory in the 2026 U.S. Senate race? Out of 2,626 real precincts across North Carolina, two ended in an exact tie and two more were decided by a single vote. Hover or click any precinct marker (or zoom in to see exact precinct boundaries) to inspect the vote totals.\n\n\n\n\n\n\n\nClosest Precincts Ranked"
+    "text": "[!TIP] Interactive controls: - Click or double-click items in chart legends to isolate or compare states. - Hover over any point to inspect detailed county vote totals. - Use the searchable tables to filter counties or export data to CSV.\n\n\nAll States ComparisonFlorida vs. North CarolinaCalifornia vs. North CarolinaIndiana vs. North CarolinaCounty Search Explorer\n\n\nCompare all 317 counties across North Carolina, Florida, California, and Indiana. Notice how urban centers (high turnout) trend Democratic, while smaller rural counties trend Republican.\n\n\n\n\n\n\n\nStatewide Summary\n\n\n\n\n\n\n\n\n\nFlorida shifted substantially toward Republicans over recent election cycles (+13.1%), whereas North Carolina remains a battleground where Democrats won the 2026 Senate seat by 2.1%.\n\n\n\n\n\n\n\nFlorida County Results\n\n\n\n\n\n\n\n\n\nCalifornia has massive population centers (e.g. Los Angeles County alone with over 3.8 million votes) that lean heavily Democratic, giving it a +30.8% statewide margin compared to North Carolina’s closely balanced +2.1%.\n\n\n\n\n\n\n\nCalifornia County Results\n\n\n\n\n\n\n\n\n\nIndiana demonstrates consistently solid Republican margins across nearly all small and medium counties, with only a few urban exceptions (Marion, Monroe, Lake). In contrast, North Carolina has strong Democratic performance across college towns, the Research Triangle, Charlotte, and the Black Belt.\n\n\n\n\n\n\n\nIndiana County Results\n\n\n\n\n\n\n\n\n\nSearch, filter, and compare any of the 317 counties across North Carolina, Florida, California, and Indiana. Type in the search box to find specific counties or click any column header to sort."
   },
   {
     "objectID": "about.html",
     "href": "about.html",
     "title": "About",
     "section": "",
-    "text": "About this site"
+    "text": "This project visualizes North Carolina election results, focusing on county-level shifts between the 2024 general election and the 2026 midterm election.\n\nSource: Official precinct- and county-level election returns from the North Carolina State Board of Elections (NCSBE).\nCoverage: Precinct vote totals aggregated to the county level for major statewide contests (such as the 2024 Presidential and 2026 U.S. Senate races).\nGeographic Data: North Carolina county boundaries provided via the maps package in R."
+  },
+  {
+    "objectID": "about.html#about-the-data",
+    "href": "about.html#about-the-data",
+    "title": "About",
+    "section": "",
+    "text": "This project visualizes North Carolina election results, focusing on county-level shifts between the 2024 general election and the 2026 midterm election.\n\nSource: Official precinct- and county-level election returns from the North Carolina State Board of Elections (NCSBE).\nCoverage: Precinct vote totals aggregated to the county level for major statewide contests (such as the 2024 Presidential and 2026 U.S. Senate races).\nGeographic Data: North Carolina county boundaries provided via the maps package in R."
+  },
+  {
+    "objectID": "precincts.html",
+    "href": "precincts.html",
+    "title": "Precinct & County Comparisons",
+    "section": "",
+    "text": "Explore geographic election breakdowns across different states. Select a tab below to switch between California, North Carolina, Florida, and Indiana to inspect voting districts, victory margins, and competitive areas.\n\n🐻 California🌲 North Carolina🌴 Florida🏎️ Indiana\n\n\nInteractive choropleth map of California’s 58 counties from the 2024 Presidential election. Hover or click any county to view vote totals and victory margins:\n\n\n\n\n\n\n\nCalifornia County Results\n\n\n\n\n\n\n\n\n\nInteractive precinct-level voting map showing the top 50 closest voting precincts across North Carolina in the 2026 U.S. Senate race between Roy Cooper (DEM) and Michael Whatley (REP). Two precincts ended in an exact tie, and two were decided by a single vote.\n\n\n\n\n\n\n\nNorth Carolina Closest Precincts\n\n\n\n\n\n\n\n\n\nInteractive choropleth map of Florida’s 67 counties from the 2024 Presidential election. Hover or click any county to inspect turnout and victory margins:\n\n\n\n\n\n\n\nFlorida County Results\n\n\n\n\n\n\n\n\n\nInteractive choropleth map of Indiana’s 92 counties from the 2024 Presidential election. Hover or click any county to inspect vote totals and victory margins:\n\n\n\n\n\n\n\nIndiana County Results"
   }
 ]

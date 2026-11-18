@@ -100,6 +100,14 @@ ul.task-list li input[type="checkbox"] {
 <span class="menu-text">Senate Shift Map</span></a>
   </li>  
   <li class="nav-item">
+    <a class="nav-link" href="./comparison.html"> 
+<span class="menu-text">State Comparisons</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="./precincts.html"> 
+<span class="menu-text">Precinct Comparisons</span></a>
+  </li>  
+  <li class="nav-item">
     <a class="nav-link active" href="./about.html" aria-current="page"> 
 <span class="menu-text">About</span></a>
   </li>  
@@ -137,11 +145,65 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<p>About this site</p>
+<section id="about-the-data" class="level2">
+<h2 class="anchored" data-anchor-id="about-the-data">About the Data</h2>
+<p>This project visualizes North Carolina election results, focusing on county-level shifts between the 2024 general election and the 2026 midterm election.</p>
+<ul>
+<li><strong>Source:</strong> Official precinct- and county-level election returns from the <a href="https://www.ncsbe.gov/">North Carolina State Board of Elections (NCSBE)</a>.</li>
+<li><strong>Coverage:</strong> Precinct vote totals aggregated to the county level for major statewide contests (such as the 2024 Presidential and 2026 U.S. Senate races).</li>
+<li><strong>Geographic Data:</strong> North Carolina county boundaries provided via the <code>maps</code> package in R.</li>
+</ul>
 
 
+</section>
 
 </main> <!-- /main -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // 1. Visible smooth fade-out on navbar tab navigation
+  document.querySelectorAll(".navbar-nav .nav-link").forEach(function (link) {
+    link.addEventListener("click", function (e) {
+      var targetHref = link.getAttribute("href");
+      if (
+        targetHref &&
+        !targetHref.startsWith("#") &&
+        !link.classList.contains("active") &&
+        link.target !== "_blank"
+      ) {
+        e.preventDefault();
+        document.body.classList.add("page-exit");
+        setTimeout(function () {
+          window.location.href = targetHref;
+        }, 250);
+      }
+    });
+  });
+
+  // 2. Floating "Back to Top" button for smooth scrolling
+  var topBtn = document.createElement("button");
+  topBtn.id = "back-to-top";
+  topBtn.innerHTML = "↑ Top";
+  topBtn.setAttribute("title", "Scroll smoothly to top");
+  document.body.appendChild(topBtn);
+
+  window.addEventListener("scroll", function () {
+    if (window.scrollY > 280) {
+      topBtn.classList.add("visible");
+    } else {
+      topBtn.classList.remove("visible");
+    }
+  });
+
+  topBtn.addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+
+// Restore page opacity if returned via browser back/forward cache
+window.addEventListener("pageshow", function () {
+  document.body.classList.remove("page-exit");
+});
+</script>
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     const icon = "";
