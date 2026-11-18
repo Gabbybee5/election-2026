@@ -1,0 +1,366 @@
+---
+title: "Precinct & County Comparisons"
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(DT)
+library(scales)
+
+# Disable s2 spherical geometry warnings for county union operations
+sf_use_s2(FALSE)
+
+# 1. Load county datasets
+ca_raw <- read_csv("data/california/results_county_2024.csv", show_col_types = FALSE)
+fl_raw <- read_csv("data/florida/results_county_2024.csv", show_col_types = FALSE)
+ind_raw <- read_csv("data/indiana/results_county_2024.csv", show_col_types = FALSE)
+nc_2026_raw <- read_tsv("data/north_carolina/results_pct_20261103.txt", show_col_types = FALSE, quote = "")
+
+# 2. Build spatial datasets for California, Florida, and Indiana
+build_state_sf <- \(state_name, df_raw) {
+  geo <- st_as_sf(maps::map("county", state_name, plot = FALSE, fill = TRUE)) |>
+    st_make_valid() |>
+    mutate(county_clean = gsub("[^a-z]", "", tolower(gsub(":.*$", "", gsub(paste0("^", state_name, ","), "", ID))))) |>
+    group_by(county_clean) |>
+    summarise(geometry = suppressMessages(st_union(geom)), .groups = "drop")
+    
+  df_raw |>
+    mutate(
+      county_clean = gsub("[^a-z]", "", tolower(gsub(" County$", "", county_name))),
+      dem_margin = 100 * (votes_dem - votes_gop) / total_votes,
+      vote_diff = abs(votes_dem - votes_gop),
+      pct_margin = abs(dem_margin),
+      winner = if_else(votes_dem > votes_gop, "Kamala Harris (DEM)", "Donald Trump (REP)"),
+      popup_html = paste0(
+        "<strong>", county_name, "</strong><br>",
+        "<hr style='margin:4px 0;'>",
+        "Winner: <strong>", winner, "</strong><br>",
+        "Democrat: <strong>", scales::comma(votes_dem), "</strong> (", sprintf("%.1f%%", 100 * votes_dem / total_votes), ")<br>",
+        "Republican: <strong>", scales::comma(votes_gop), "</strong> (", sprintf("%.1f%%", 100 * votes_gop / total_votes), ")<br>",
+        "Margin: <strong>", if_else(dem_margin >= 0, "+", ""), sprintf("%.2f%%", dem_margin),
+        " (", scales::comma(vote_diff), " votes)</strong><br>",
+        "Total Turnout: <strong>", scales::comma(total_votes), "</strong>"
+      ),
+      hover_label = paste0(
+        county_name, ": ",
+        if_else(dem_margin >= 0, paste0("DEM +", sprintf("%.1f%%", dem_margin)), paste0("REP +", sprintf("%.1f%%", -dem_margin))),
+        " (", scales::comma(total_votes), " votes)"
+      )
+    ) |>
+    inner_join(geo, by = "county_clean") |>
+    st_as_sf() |>
+    st_transform(4326)
+}
+
+ca_sf <- build_state_sf("california", ca_raw)
+fl_sf <- build_state_sf("florida", fl_raw)
+ind_sf <- build_state_sf("indiana", ind_raw)
+
+# 3. North Carolina Precinct Boundaries & Results
+precincts_sf <- st_read(
+  "/vsizip/data/north_carolina/SBE_PRECINCTS_20260824.zip/SBE_PRECINCTS_20260824.shp",
+  quiet = TRUE
+)
+
+nc_precinct_margins <- nc_2026_raw |>
+  filter(
+    `Contest Name` == "US SENATE",
+    `Real Precinct` == "Y",
+    `Choice Party` %in% c("DEM", "REP")
+  ) |>
+  group_by(County, Precinct, `Choice Party`) |>
+  summarise(votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = votes, values_fill = 0) |>
+  filter(DEM + REP > 0) |>
+  mutate(
+    total_two_party = DEM + REP,
+    vote_diff = abs(DEM - REP),
+    pct_margin = 100 * vote_diff / total_two_party,
+    dem_margin = 100 * (DEM - REP) / total_two_party,
+    winner = factor(
+      case_when(
+        DEM == REP ~ "Exact Tie",
+        DEM > REP ~ "Roy Cooper (DEM)",
+        TRUE ~ "Michael Whatley (REP)"
+      ),
+      levels = c("Exact Tie", "Roy Cooper (DEM)", "Michael Whatley (REP)")
+    )
+  ) |>
+  arrange(pct_margin, vote_diff, desc(total_two_party)) |>
+  mutate(rank = min_rank(pct_margin))
+
+nc_top50_sf <- precincts_sf |>
+  inner_join(
+    nc_precinct_margins |> slice_head(n = 50),
+    by = c("county_nam" = "County", "prec_id" = "Precinct")
+  ) |>
+  st_make_valid() |>
+  st_transform(4326) |>
+  arrange(pct_margin, vote_diff) |>
+  mutate(
+    precinct_label = if_else(
+      enr_desc == prec_id,
+      prec_id,
+      paste0(prec_id, " — ", str_to_title(enr_desc))
+    ),
+    popup_html = paste0(
+      "<strong>Rank #", rank, ": ", str_to_title(county_nam), " County</strong><br>",
+      "Precinct: ", precinct_label, "<br><hr style='margin:4px 0;'>",
+      "Roy Cooper (DEM): <strong>", scales::comma(DEM), "</strong><br>",
+      "Michael Whatley (REP): <strong>", scales::comma(REP), "</strong><br>",
+      "Margin: <strong>", vote_diff, if_else(vote_diff == 1, " vote", " votes"),
+      sprintf(" (%.2f%%)", pct_margin), "</strong> — ", winner
+    ),
+    hover_label = paste0(
+      "#", rank, " ", str_to_title(county_nam), " (", prec_id, "): ",
+      if_else(vote_diff == 0, "Exact Tie!", paste0(winner, " +", vote_diff, " (", sprintf("%.2f%%", pct_margin), ")"))
+    )
+  )
+
+# Color palettes
+margin_pal <- colorNumeric(
+  palette = c("#b2182b", "#ef8a62", "#f7f7f7", "#67a9cf", "#2166ac"),
+  domain = c(-60, 60),
+  na.color = "#cccccc"
+)
+
+winner_pal <- colorFactor(
+  palette = c("#7c3aed", "#1d68c4", "#d73027"),
+  levels = c("Exact Tie", "Roy Cooper (DEM)", "Michael Whatley (REP)")
+)
+
+# Helper function to render county-level choropleth
+render_county_map <- \(sf_data) {
+  leaflet(sf_data, height = 520, width = "100%") |>
+    addProviderTiles(providers$Esri.WorldGrayCanvas) |>
+    addPolygons(
+      fillColor = ~margin_pal(pmax(pmin(dem_margin, 60), -60)),
+      fillOpacity = 0.78,
+      weight = 1.2,
+      color = "#ffffff",
+      dashArray = "1",
+      highlightOptions = highlightOptions(
+        weight = 2.5,
+        color = "#111827",
+        bringToFront = TRUE
+      ),
+      label = ~hover_label,
+      popup = ~popup_html
+    ) |>
+    addLegend(
+      position = "bottomright",
+      pal = margin_pal,
+      values = c(-60, 60),
+      title = "Dem Margin (%)",
+      labFormat = labelFormat(suffix = "%", transform = \(x) x),
+      opacity = 0.85
+    )
+}
+
+# Helper function for searchable data tables
+render_comparison_table <- \(df) {
+  datatable(
+    df,
+    extensions = "Buttons",
+    options = list(
+      dom = "Bfrtip",
+      buttons = list(
+        list(extend = "copy", text = "📋 Copy"),
+        list(extend = "csv", text = "📥 Download CSV")
+      ),
+      pageLength = 8,
+      autoWidth = TRUE
+    ),
+    rownames = FALSE
+  ) |>
+    formatRound(c("Dem Votes", "GOP Votes", "Total Votes"), digits = 0, mark = ",") |>
+    formatRound("Margin (%)", digits = 2) |>
+    formatStyle(
+      "Margin (%)",
+      backgroundColor = styleInterval(
+        c(-30, -15, -0.01, 0, 15, 30),
+        c("#fee2e2", "#fecaca", "#fee2e2", "#f8fafc", "#e0e7ff", "#bfdbfe", "#93c5fd")
+      ),
+      color = styleInterval(0, c("#991b1b", "#1e40af")),
+      fontWeight = "600"
+    )
+}
+```
+
+Explore geographic election breakdowns across different states. Select a tab below to switch between **California**, **North Carolina**, **Florida**, and **Indiana** to inspect voting districts, victory margins, and competitive areas.
+
+::: {.panel-tabset}
+
+## 🐻 California
+
+Interactive choropleth map of California's 58 counties from the 2024 Presidential election. Hover or click any county to view vote totals and victory margins:
+
+```{r}
+#| label: ca-precinct-map
+#| echo: false
+#| message: false
+#| warning: false
+
+render_county_map(ca_sf)
+```
+
+### California County Results
+
+```{r}
+#| label: ca-table
+#| echo: false
+
+ca_table_df <- ca_sf |>
+  st_drop_geometry() |>
+  arrange(desc(total_votes)) |>
+  transmute(
+    `County` = county_name,
+    `Winner` = winner,
+    `Dem Votes` = votes_dem,
+    `GOP Votes` = votes_gop,
+    `Total Votes` = total_votes,
+    `Margin (%)` = dem_margin
+  )
+
+render_comparison_table(ca_table_df)
+```
+
+## 🌲 North Carolina
+
+Interactive precinct-level voting map showing the **top 50 closest voting precincts** across North Carolina in the 2026 U.S. Senate race between Roy Cooper (DEM) and Michael Whatley (REP). Two precincts ended in an exact tie, and two were decided by a single vote.
+
+```{r}
+#| label: nc-precincts-map
+#| echo: false
+#| message: false
+#| warning: false
+
+leaflet(nc_top50_sf, height = 520, width = "100%") |>
+  addProviderTiles(providers$Esri.WorldGrayCanvas) |>
+  addPolygons(
+    fillColor = ~winner_pal(winner),
+    fillOpacity = 0.85,
+    weight = 2,
+    color = "#ffffff",
+    dashArray = "1",
+    label = ~hover_label,
+    popup = ~popup_html,
+    highlightOptions = highlightOptions(
+      weight = 3.5,
+      color = "#111827",
+      bringToFront = TRUE
+    )
+  ) |>
+  addCircleMarkers(
+    data = st_centroid(nc_top50_sf),
+    radius = 5,
+    color = "#111827",
+    weight = 1.5,
+    fillColor = ~winner_pal(winner),
+    fillOpacity = 0.9,
+    label = ~hover_label,
+    popup = ~popup_html
+  ) |>
+  addLegend(
+    position = "bottomright",
+    pal = winner_pal,
+    values = ~winner,
+    title = "Precinct Winner",
+    opacity = 0.9
+  )
+```
+
+### North Carolina Closest Precincts
+
+```{r}
+#| label: nc-table
+#| echo: false
+
+nc_table_df <- nc_precinct_margins |>
+  slice_head(n = 50) |>
+  transmute(
+    `Precinct` = paste0(str_to_title(County), " — ", Precinct),
+    `Winner` = as.character(winner),
+    `Dem Votes` = DEM,
+    `GOP Votes` = REP,
+    `Total Votes` = total_two_party,
+    `Margin (%)` = dem_margin
+  )
+
+render_comparison_table(nc_table_df)
+```
+
+## 🌴 Florida
+
+Interactive choropleth map of Florida's 67 counties from the 2024 Presidential election. Hover or click any county to inspect turnout and victory margins:
+
+```{r}
+#| label: fl-precinct-map
+#| echo: false
+#| message: false
+#| warning: false
+
+render_county_map(fl_sf)
+```
+
+### Florida County Results
+
+```{r}
+#| label: fl-table
+#| echo: false
+
+fl_table_df <- fl_sf |>
+  st_drop_geometry() |>
+  arrange(desc(total_votes)) |>
+  transmute(
+    `County` = county_name,
+    `Winner` = winner,
+    `Dem Votes` = votes_dem,
+    `GOP Votes` = votes_gop,
+    `Total Votes` = total_votes,
+    `Margin (%)` = dem_margin
+  )
+
+render_comparison_table(fl_table_df)
+```
+
+## 🏎️ Indiana
+
+Interactive choropleth map of Indiana's 92 counties from the 2024 Presidential election. Hover or click any county to inspect vote totals and victory margins:
+
+```{r}
+#| label: ind-precinct-map
+#| echo: false
+#| message: false
+#| warning: false
+
+render_county_map(ind_sf)
+```
+
+### Indiana County Results
+
+```{r}
+#| label: ind-table
+#| echo: false
+
+ind_table_df <- ind_sf |>
+  st_drop_geometry() |>
+  arrange(desc(total_votes)) |>
+  transmute(
+    `County` = county_name,
+    `Winner` = winner,
+    `Dem Votes` = votes_dem,
+    `GOP Votes` = votes_gop,
+    `Total Votes` = total_votes,
+    `Margin (%)` = dem_margin
+  )
+
+render_comparison_table(ind_table_df)
+```
+
+:::

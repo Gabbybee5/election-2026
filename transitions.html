@@ -1,0 +1,46 @@
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // 1. Visible smooth fade-out on navbar tab navigation
+  document.querySelectorAll(".navbar-nav .nav-link").forEach(function (link) {
+    link.addEventListener("click", function (e) {
+      var targetHref = link.getAttribute("href");
+      if (
+        targetHref &&
+        !targetHref.startsWith("#") &&
+        !link.classList.contains("active") &&
+        link.target !== "_blank"
+      ) {
+        e.preventDefault();
+        document.body.classList.add("page-exit");
+        setTimeout(function () {
+          window.location.href = targetHref;
+        }, 250);
+      }
+    });
+  });
+
+  // 2. Floating "Back to Top" button for smooth scrolling
+  var topBtn = document.createElement("button");
+  topBtn.id = "back-to-top";
+  topBtn.innerHTML = "↑ Top";
+  topBtn.setAttribute("title", "Scroll smoothly to top");
+  document.body.appendChild(topBtn);
+
+  window.addEventListener("scroll", function () {
+    if (window.scrollY > 280) {
+      topBtn.classList.add("visible");
+    } else {
+      topBtn.classList.remove("visible");
+    }
+  });
+
+  topBtn.addEventListener("click", function () {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+});
+
+// Restore page opacity if returned via browser back/forward cache
+window.addEventListener("pageshow", function () {
+  document.body.classList.remove("page-exit");
+});
+</script>

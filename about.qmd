@@ -2,4 +2,11 @@
 title: "About"
 ---
 
-About this site
+## About the Data
+
+This project visualizes North Carolina election results, focusing on county-level shifts between the 2024 general election and the 2026 midterm election.
+
+- **Source:** Official precinct- and county-level election returns from the [North Carolina State Board of Elections (NCSBE)](https://www.ncsbe.gov/).
+- **Coverage:** Precinct vote totals aggregated to the county level for major statewide contests (such as the 2024 Presidential and 2026 U.S. Senate races).
+- **Geographic Data:** North Carolina county boundaries provided via the `maps` package in R.
+

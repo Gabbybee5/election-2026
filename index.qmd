@@ -11,29 +11,17 @@ library(sf)
 library(leaflet)
 library(DT)
 
-# Load 2024 and 2026 precinct-level NCSBE results once
+# 1. Load 2024 and 2026 precinct-level NCSBE results
 nc_2024 <- read_tsv("data/north_carolina/results_pct_20241105.txt", show_col_types = FALSE, quote = "")
 nc_2026 <- read_tsv("data/north_carolina/results_pct_20261103.txt", show_col_types = FALSE, quote = "")
-```
 
-## County Shift Map (2024 to 2026)
+# 2. Official voting precinct shapefile
+precincts_sf <- st_read(
+  "/vsizip/data/north_carolina/SBE_PRECINCTS_20260824.zip/SBE_PRECINCTS_20260824.shp",
+  quiet = TRUE
+)
 
-How counties shifted in the **2026 U.S. Senate election** (Roy Cooper vs. Michael Whatley) compared with the **2024 presidential election** (Kamala Harris vs. Donald Trump):
-
-- **Blue arrows** = shift toward Democrats
-- **Red arrows** = shift toward Republicans
-- **Longer arrows** = bigger change in two-party margin
-
-```{r}
-#| label: nc-shift-map
-#| echo: false
-#| message: false
-#| warning: false
-#| fig-width: 10
-#| fig-height: 5.2
-#| fig-dpi: 300
-
-# Compute 2024 county two-party Democratic margin (US President)
+# 3. County margins for 2024 President and 2026 US Senate
 margin_2024 <- nc_2024 |>
   filter(`Contest Name` == "US PRESIDENT", `Choice Party` %in% c("DEM", "REP")) |>
   group_by(County, `Choice Party`) |>
@@ -42,7 +30,6 @@ margin_2024 <- nc_2024 |>
   mutate(dem_margin_2024 = 100 * (DEM - REP) / (DEM + REP)) |>
   select(County, dem_margin_2024)
 
-# Compute 2026 county two-party Democratic margin (US Senate)
 margin_2026 <- nc_2026 |>
   filter(`Contest Name` == "US SENATE", `Choice Party` %in% c("DEM", "REP")) |>
   group_by(County, `Choice Party`) |>
@@ -51,7 +38,7 @@ margin_2026 <- nc_2026 |>
   mutate(dem_margin_2026 = 100 * (DEM - REP) / (DEM + REP)) |>
   select(County, dem_margin_2026)
 
-# Load NC county polygons and calculate centroids for arrow origins
+# 4. County polygons & shift calculations
 nc_counties <- st_as_sf(maps::map("county", "north carolina", plot = FALSE, fill = TRUE)) |>
   st_make_valid() |>
   mutate(County = str_to_upper(str_remove(ID, "^north carolina,"))) |>
@@ -76,64 +63,7 @@ centroids <- nc_counties |>
   ) |>
   st_drop_geometry()
 
-ggplot() +
-  geom_sf(data = nc_counties, fill = "#f3f4f6", color = "white", linewidth = 0.4) +
-  geom_segment(
-    data = centroids,
-    aes(
-      x = lon,
-      y = lat,
-      xend = lon_end,
-      yend = lat_end,
-      color = direction
-    ),
-    linewidth = 0.75,
-    alpha = 0.9,
-    arrow = arrow(length = unit(0.14, "cm"), type = "closed"),
-    show.legend = TRUE
-  ) +
-  scale_color_manual(
-    values = c(
-      "Shift toward Democrats" = "#1d68c4",
-      "Shift toward Republicans" = "#d73027"
-    ),
-    drop = FALSE,
-    name = NULL
-  ) +
-  coord_sf(clip = "off") +
-  labs(
-    title = "Shift in Margin from 2024 President to 2026 U.S. Senate",
-    subtitle = "Each arrow starts at a county's center; longer arrows indicate a larger shift in two-party margin",
-    caption = "Source: North Carolina State Board of Elections (NCSBE)"
-  ) +
-  theme_void(base_size = 12) +
-  theme(
-    plot.title = element_text(face = "bold", size = 15, margin = margin(b = 4)),
-    plot.subtitle = element_text(color = "#4b5563", size = 10.5, margin = margin(b = 10)),
-    plot.caption = element_text(color = "#6b7280", size = 9, margin = margin(t = 8)),
-    legend.position = "top",
-    legend.text = element_text(size = 10.5),
-    plot.margin = margin(10, 15, 10, 15)
-  )
-```
-
-## Closest Precincts Map
-
-Which voting precincts had the smallest margins of victory in the **2026 U.S. Senate race**? Out of 2,626 real precincts across North Carolina, **two ended in an exact tie** and **two more were decided by a single vote**. Hover or click any precinct marker (or zoom in to see exact precinct boundaries) to inspect the vote totals.
-
-```{r}
-#| label: closest-precincts-map
-#| echo: false
-#| message: false
-#| warning: false
-
-# Read official 2026 NCSBE voting precinct boundaries directly from zip
-precincts_sf <- st_read(
-  "/vsizip/data/north_carolina/SBE_PRECINCTS_20260824.zip/SBE_PRECINCTS_20260824.shp",
-  quiet = TRUE
-)
-
-# Calculate two-party margin for every real precinct in 2026 US Senate and rank them
+# 5. Precinct margins and top 50 closest
 precinct_margins <- nc_2026 |>
   filter(
     `Contest Name` == "US SENATE",
@@ -160,7 +90,6 @@ precinct_margins <- nc_2026 |>
   arrange(pct_margin, vote_diff, desc(total_two_party)) |>
   mutate(rank = min_rank(pct_margin))
 
-# Join top 50 closest precincts to polygons and transform to WGS84 (EPSG:4326) for Leaflet
 top50_polys <- precincts_sf |>
   inner_join(
     precinct_margins |> slice_head(n = 50),
@@ -196,9 +125,33 @@ winner_pal <- colorFactor(
   palette = c("#7c3aed", "#1d68c4", "#d73027"),
   levels = c("Exact Tie", "Roy Cooper (DEM)", "Michael Whatley (REP)")
 )
+```
 
-leaflet(height = "520px") |>
-  addTiles() |>
+<div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap;">
+  <span style="font-weight: 700; font-size: 0.85rem; color: #475569; text-transform: uppercase;">Featured Map:</span>
+  <button class="btn btn-sm btn-outline-primary" onclick="swapMapFocus('precincts')">🗺️ Closest Precincts (Default)</button>
+  <button class="btn btn-sm btn-outline-danger" onclick="swapMapFocus('shift')">🔄 County Shift Map</button>
+</div>
+
+::: {.map-swap-grid}
+
+::: {#panel-precincts .map-card .is-main onclick="if(this.classList.contains('is-side')) swapMapFocus('precincts')"}
+<div class="map-card-header">
+  <h3 class="map-card-title">Closest Precincts Map</h3>
+  <span id="badge-precincts" class="map-card-badge">🌟 Featured View</span>
+</div>
+<div class="map-card-desc">
+  Which voting precincts had the smallest margins of victory in the <strong>2026 U.S. Senate race</strong>? Two ended in an exact tie and two more were decided by a single vote. Hover or click markers to inspect vote totals:
+</div>
+
+```{r}
+#| label: closest-precincts-map
+#| echo: false
+#| message: false
+#| warning: false
+
+leaflet(height = "560px") |>
+  addProviderTiles(providers$Esri.WorldGrayCanvas) |>
   addPolygons(
     data = st_transform(nc_counties, 4326),
     fillColor = "#f8fafc",
@@ -234,15 +187,120 @@ leaflet(height = "520px") |>
     opacity = 0.9
   )
 ```
+:::
 
-### Closest Precincts Ranked
+::: {#panel-shift .map-card .is-side onclick="if(this.classList.contains('is-side')) swapMapFocus('shift')"}
+<div class="map-card-header">
+  <h3 class="map-card-title">County Shift in Margin</h3>
+  <span id="badge-shift" class="map-card-badge">🔍 Click to Enlarge</span>
+</div>
+<div class="map-card-desc">
+  How NC counties shifted between 2024 President and 2026 Senate. <strong>Blue</strong> = shift toward Democrats; <strong>Red</strong> = shift toward Republicans.
+</div>
+
+```{r}
+#| label: nc-shift-map
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6.5
+#| fig-height: 4.8
+#| fig-dpi: 300
+
+ggplot() +
+  geom_sf(data = nc_counties, fill = "#f3f4f6", color = "white", linewidth = 0.4) +
+  geom_segment(
+    data = centroids,
+    aes(
+      x = lon,
+      y = lat,
+      xend = lon_end,
+      yend = lat_end,
+      color = direction
+    ),
+    linewidth = 0.75,
+    alpha = 0.9,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed"),
+    show.legend = TRUE
+  ) +
+  scale_color_manual(
+    values = c(
+      "Shift toward Democrats" = "#1d68c4",
+      "Shift toward Republicans" = "#d73027"
+    ),
+    drop = FALSE,
+    name = NULL
+  ) +
+  coord_sf(clip = "off") +
+  labs(
+    title = "2024 Pres → 2026 Senate Shifts",
+    subtitle = "Arrow length represents two-party margin swing",
+    caption = "Source: NCSBE"
+  ) +
+  theme_void(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", size = 13, margin = margin(b = 3)),
+    plot.subtitle = element_text(color = "#4b5563", size = 9.5, margin = margin(b = 8)),
+    plot.caption = element_text(color = "#6b7280", size = 8.5, margin = margin(t = 6)),
+    legend.position = "top",
+    legend.text = element_text(size = 9.5),
+    plot.margin = margin(6, 6, 6, 6)
+  )
+```
+:::
+
+:::
+
+<script>
+function swapMapFocus(target) {
+  var panelPrecincts = document.getElementById('panel-precincts');
+  var panelShift = document.getElementById('panel-shift');
+  var badgePrecincts = document.getElementById('badge-precincts');
+  var badgeShift = document.getElementById('badge-shift');
+  
+  if (!panelPrecincts || !panelShift) return;
+
+  if (target === 'shift') {
+    panelShift.classList.remove('is-side');
+    panelShift.classList.add('is-main');
+    if (badgeShift) badgeShift.textContent = '🌟 Featured View';
+    
+    panelPrecincts.classList.remove('is-main');
+    panelPrecincts.classList.add('is-side');
+    if (badgePrecincts) badgePrecincts.textContent = '🔍 Click to Enlarge';
+  } else {
+    panelPrecincts.classList.remove('is-side');
+    panelPrecincts.classList.add('is-main');
+    if (badgePrecincts) badgePrecincts.textContent = '🌟 Featured View';
+    
+    panelShift.classList.remove('is-main');
+    panelShift.classList.add('is-side');
+    if (badgeShift) badgeShift.textContent = '🔍 Click to Enlarge';
+  }
+
+  setTimeout(function() {
+    window.dispatchEvent(new Event('resize'));
+    var leafletEl = document.querySelector('.leaflet.html-widget');
+    if (leafletEl && window.HTMLWidgets && window.HTMLWidgets.getInstance) {
+      var widget = window.HTMLWidgets.getInstance(leafletEl);
+      if (widget && widget.getMap) {
+        widget.getMap().invalidateSize();
+      }
+    }
+  }, 420);
+}
+</script>
+
+## Closest Precincts Ranked
+
+Below are the 50 closest precincts across the state ranked by margin of victory. Use the search bar to locate specific precincts or counties.
 
 ```{r}
 #| label: closest-precincts-table
 #| echo: false
 
 precinct_margins |>
-  slice_head(n = 100) |>
+  slice_head(n = 50) |>
   left_join(
     st_drop_geometry(precincts_sf) |> select(county_nam, prec_id, enr_desc),
     by = c("County" = "county_nam", "Precinct" = "prec_id")
@@ -268,5 +326,18 @@ precinct_margins |>
   datatable(
     rownames = FALSE,
     options = list(pageLength = 10, autoWidth = TRUE)
+  ) |>
+  formatRound(c("Cooper (DEM)", "Whatley (REP)", "Vote Diff"), digits = 0, mark = ",") |>
+  formatStyle(
+    "Outcome",
+    backgroundColor = styleEqual(
+      c("Roy Cooper (DEM)", "Michael Whatley (REP)", "Exact Tie"),
+      c("#dbeafe", "#fee2e2", "#f3e8ff")
+    ),
+    color = styleEqual(
+      c("Roy Cooper (DEM)", "Michael Whatley (REP)", "Exact Tie"),
+      c("#1e40af", "#991b1b", "#6b21a8")
+    ),
+    fontWeight = "600"
   )
 ```

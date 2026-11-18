@@ -1,0 +1,358 @@
+---
+title: "Multi-State Election Comparisons"
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(plotly)
+library(DT)
+library(scales)
+
+# 1. Load county-level datasets
+fl_raw <- read_csv("data/florida/results_county_2024.csv", show_col_types = FALSE)
+ca_raw <- read_csv("data/california/results_county_2024.csv", show_col_types = FALSE)
+ind_raw <- read_csv("data/indiana/results_county_2024.csv", show_col_types = FALSE)
+nc_2026_raw <- read_tsv("data/north_carolina/results_pct_20261103.txt", show_col_types = FALSE, quote = "")
+
+# 2. Standardize North Carolina 2026 Senate county totals
+nc_sen <- nc_2026_raw |>
+  filter(`Contest Name` == "US SENATE", `Choice Party` %in% c("DEM", "REP")) |>
+  group_by(County, `Choice Party`) |>
+  summarise(votes = sum(`Total Votes`), .groups = "drop") |>
+  pivot_wider(names_from = `Choice Party`, values_from = votes, values_fill = 0) |>
+  mutate(
+    county_name = str_to_title(County),
+    votes_dem = DEM,
+    votes_gop = REP,
+    total_votes = DEM + REP,
+    margin_dem = 100 * (DEM - REP) / total_votes,
+    state = "North Carolina (2026 Senate)"
+  ) |>
+  select(state, county_name, votes_dem, votes_gop, total_votes, margin_dem)
+
+# 3. Standardize Florida, California, and Indiana
+fl_clean <- fl_raw |>
+  mutate(margin_dem = 100 * (per_dem - per_gop), state = "Florida (2024 Pres)") |>
+  select(state, county_name, votes_dem, votes_gop, total_votes, margin_dem)
+
+ca_clean <- ca_raw |>
+  mutate(margin_dem = 100 * (per_dem - per_gop), state = "California (2024 Pres)") |>
+  select(state, county_name, votes_dem, votes_gop, total_votes, margin_dem)
+
+ind_clean <- ind_raw |>
+  mutate(margin_dem = 100 * (per_dem - per_gop), state = "Indiana (2024 Pres)") |>
+  select(state, county_name, votes_dem, votes_gop, total_votes, margin_dem)
+
+# Combined dataset across all four states (317 counties)
+all_counties <- bind_rows(nc_sen, fl_clean, ca_clean, ind_clean)
+
+# Helper function to generate standardized color-coded DT tables with export buttons
+build_county_table <- \(df) {
+  datatable(
+    df,
+    extensions = "Buttons",
+    options = list(
+      dom = "Bfrtip",
+      buttons = list(
+        list(extend = "copy", text = "📋 Copy"),
+        list(extend = "csv", text = "📥 Download CSV")
+      ),
+      pageLength = 10,
+      autoWidth = TRUE
+    ),
+    rownames = FALSE
+  ) |>
+    formatRound(c("Dem Votes", "GOP Votes", "Total Votes"), digits = 0, mark = ",") |>
+    formatRound("Dem Margin (%)", digits = 2) |>
+    formatStyle(
+      "Dem Margin (%)",
+      backgroundColor = styleInterval(
+        c(-30, -15, -0.01, 0, 15, 30),
+        c("#fee2e2", "#fecaca", "#fee2e2", "#f8fafc", "#e0e7ff", "#bfdbfe", "#93c5fd")
+      ),
+      color = styleInterval(0, c("#991b1b", "#1e40af")),
+      fontWeight = "600"
+    )
+}
+```
+
+
+> [!TIP]
+> **Interactive controls:** 
+> - Click or double-click items in chart legends to isolate or compare states.
+> - Hover over any point to inspect detailed county vote totals.
+> - Use the searchable tables to filter counties or export data to CSV.
+
+::: {.panel-tabset}
+
+## All States Comparison
+
+Compare all 317 counties across North Carolina, Florida, California, and Indiana. Notice how urban centers (high turnout) trend Democratic, while smaller rural counties trend Republican.
+
+```{r}
+#| label: all-states-scatter
+#| echo: false
+#| message: false
+#| warning: false
+
+all_scatter <- all_counties |>
+  mutate(
+    hover_text = paste0(
+      "<b>", county_name, "</b> (", state, ")<br>",
+      "Dem Margin: <b>", sprintf("%+.2f%%", margin_dem), "</b><br>",
+      "Turnout: ", comma(total_votes), "<br>",
+      "Dem: ", comma(votes_dem), " | GOP: ", comma(votes_gop)
+    )
+  ) |>
+  ggplot(aes(x = total_votes, y = margin_dem, color = state, text = hover_text)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#64748b", linewidth = 0.8) +
+  geom_point(alpha = 0.75, size = 2.6) +
+  scale_x_log10(labels = comma) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_color_manual(values = c(
+    "California (2024 Pres)" = "#1d68c4",
+    "Florida (2024 Pres)" = "#f97316",
+    "Indiana (2024 Pres)" = "#d73027",
+    "North Carolina (2026 Senate)" = "#7c3aed"
+  )) +
+  labs(
+    title = "County Margin vs. Turnout (317 Counties)",
+    subtitle = "Double-click a state in the legend to isolate it",
+    x = "County Turnout (log scale)",
+    y = "Democratic Margin (% DEM - % GOP)",
+    color = "Dataset"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "right"
+  )
+
+ggplotly(all_scatter, tooltip = "text")
+```
+
+### Statewide Summary
+
+```{r}
+#| label: statewide-summary-table
+#| echo: false
+
+all_counties |>
+  group_by(state) |>
+  summarise(
+    `Total Counties` = n(),
+    `Dem Won Counties` = sum(margin_dem > 0),
+    `GOP Won Counties` = sum(margin_dem < 0),
+    `Total Turnout` = sum(total_votes),
+    `Statewide Margin` = sprintf("%+.2f%%", 100 * (sum(votes_dem) - sum(votes_gop)) / sum(total_votes)),
+    `State Winner` = if_else(sum(votes_dem) > sum(votes_gop), "Democrat", "Republican"),
+    .groups = "drop"
+  ) |>
+  datatable(
+    options = list(dom = "t", paging = FALSE),
+    rownames = FALSE
+  ) |>
+  formatRound(c("Total Counties", "Dem Won Counties", "GOP Won Counties", "Total Turnout"), digits = 0, mark = ",")
+```
+
+## Florida vs. North Carolina
+
+Florida shifted substantially toward Republicans over recent election cycles (+13.1%), whereas North Carolina remains a battleground where Democrats won the 2026 Senate seat by 2.1%.
+
+```{r}
+#| label: fl-nc-scatter
+#| echo: false
+#| message: false
+#| warning: false
+
+fl_nc_p <- all_counties |>
+  filter(state %in% c("North Carolina (2026 Senate)", "Florida (2024 Pres)")) |>
+  mutate(
+    hover_text = paste0(
+      "<b>", county_name, "</b> (", state, ")<br>",
+      "Dem Margin: <b>", sprintf("%+.2f%%", margin_dem), "</b><br>",
+      "Turnout: ", comma(total_votes), "<br>",
+      "DEM: ", comma(votes_dem), " | GOP: ", comma(votes_gop)
+    )
+  ) |>
+  ggplot(aes(x = total_votes, y = margin_dem, color = state, text = hover_text)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#64748b") +
+  geom_point(alpha = 0.75, size = 3) +
+  scale_x_log10(labels = comma) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_color_manual(values = c(
+    "Florida (2024 Pres)" = "#f97316",
+    "North Carolina (2026 Senate)" = "#7c3aed"
+  )) +
+  labs(
+    title = "Florida vs. North Carolina County Margins",
+    x = "County Turnout (log scale)",
+    y = "Democratic Margin (% DEM - % GOP)",
+    color = "State"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+ggplotly(fl_nc_p, tooltip = "text")
+```
+
+### Florida County Results
+
+```{r}
+#| label: fl-table
+#| echo: false
+
+fl_clean |>
+  select(`County` = county_name, `Dem Votes` = votes_dem, `GOP Votes` = votes_gop, `Total Votes` = total_votes, `Dem Margin (%)` = margin_dem) |>
+  arrange(desc(`Total Votes`)) |>
+  build_county_table()
+```
+
+## California vs. North Carolina
+
+California has massive population centers (e.g. Los Angeles County alone with over 3.8 million votes) that lean heavily Democratic, giving it a +30.8% statewide margin compared to North Carolina's closely balanced +2.1%.
+
+```{r}
+#| label: ca-nc-scatter
+#| echo: false
+#| message: false
+#| warning: false
+
+ca_nc_p <- all_counties |>
+  filter(state %in% c("North Carolina (2026 Senate)", "California (2024 Pres)")) |>
+  mutate(
+    hover_text = paste0(
+      "<b>", county_name, "</b> (", state, ")<br>",
+      "Dem Margin: <b>", sprintf("%+.2f%%", margin_dem), "</b><br>",
+      "Turnout: ", comma(total_votes), "<br>",
+      "DEM: ", comma(votes_dem), " | GOP: ", comma(votes_gop)
+    )
+  ) |>
+  ggplot(aes(x = total_votes, y = margin_dem, color = state, text = hover_text)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#64748b") +
+  geom_point(alpha = 0.75, size = 3) +
+  scale_x_log10(labels = comma) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_color_manual(values = c(
+    "California (2024 Pres)" = "#1d68c4",
+    "North Carolina (2026 Senate)" = "#7c3aed"
+  )) +
+  labs(
+    title = "California vs. North Carolina County Margins",
+    x = "County Turnout (log scale)",
+    y = "Democratic Margin (% DEM - % GOP)",
+    color = "State"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+ggplotly(ca_nc_p, tooltip = "text")
+```
+
+### California County Results
+
+```{r}
+#| label: ca-table
+#| echo: false
+
+ca_clean |>
+  select(`County` = county_name, `Dem Votes` = votes_dem, `GOP Votes` = votes_gop, `Total Votes` = total_votes, `Dem Margin (%)` = margin_dem) |>
+  arrange(desc(`Total Votes`)) |>
+  build_county_table()
+```
+
+## Indiana vs. North Carolina
+
+Indiana demonstrates consistently solid Republican margins across nearly all small and medium counties, with only a few urban exceptions (Marion, Monroe, Lake). In contrast, North Carolina has strong Democratic performance across college towns, the Research Triangle, Charlotte, and the Black Belt.
+
+```{r}
+#| label: ind-nc-scatter
+#| echo: false
+#| message: false
+#| warning: false
+
+ind_nc_p <- all_counties |>
+  filter(state %in% c("North Carolina (2026 Senate)", "Indiana (2024 Pres)")) |>
+  mutate(
+    hover_text = paste0(
+      "<b>", county_name, "</b> (", state, ")<br>",
+      "Dem Margin: <b>", sprintf("%+.2f%%", margin_dem), "</b><br>",
+      "Turnout: ", comma(total_votes), "<br>",
+      "DEM: ", comma(votes_dem), " | GOP: ", comma(votes_gop)
+    )
+  ) |>
+  ggplot(aes(x = total_votes, y = margin_dem, color = state, text = hover_text)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#64748b") +
+  geom_point(alpha = 0.75, size = 3) +
+  scale_x_log10(labels = comma) +
+  scale_y_continuous(labels = \(x) paste0(x, "%")) +
+  scale_color_manual(values = c(
+    "Indiana (2024 Pres)" = "#d73027",
+    "North Carolina (2026 Senate)" = "#7c3aed"
+  )) +
+  labs(
+    title = "Indiana vs. North Carolina County Margins",
+    x = "County Turnout (log scale)",
+    y = "Democratic Margin (% DEM - % GOP)",
+    color = "State"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+ggplotly(ind_nc_p, tooltip = "text")
+```
+
+### Indiana County Results
+
+```{r}
+#| label: ind-table
+#| echo: false
+
+ind_clean |>
+  select(`County` = county_name, `Dem Votes` = votes_dem, `GOP Votes` = votes_gop, `Total Votes` = total_votes, `Dem Margin (%)` = margin_dem) |>
+  arrange(desc(`Total Votes`)) |>
+  build_county_table()
+```
+
+## County Search Explorer
+
+Search, filter, and compare any of the 317 counties across North Carolina, Florida, California, and Indiana. Type in the search box to find specific counties or click any column header to sort.
+
+```{r}
+#| label: all-counties-searchable-table
+#| echo: false
+
+all_counties |>
+  select(`State` = state, `County` = county_name, `Dem Votes` = votes_dem, `GOP Votes` = votes_gop, `Total Votes` = total_votes, `Dem Margin (%)` = margin_dem) |>
+  arrange(desc(`Total Votes`)) |>
+  datatable(
+    extensions = "Buttons",
+    filter = "top",
+    options = list(
+      dom = "Bfrtip",
+      buttons = list(
+        list(extend = "copy", text = "📋 Copy"),
+        list(extend = "csv", text = "📥 Download CSV")
+      ),
+      pageLength = 15,
+      autoWidth = TRUE
+    ),
+    rownames = FALSE
+  ) |>
+  formatRound(c("Dem Votes", "GOP Votes", "Total Votes"), digits = 0, mark = ",") |>
+  formatRound("Dem Margin (%)", digits = 2) |>
+  formatStyle(
+    "Dem Margin (%)",
+    backgroundColor = styleInterval(
+      c(-30, -15, -0.01, 0, 15, 30),
+      c("#fee2e2", "#fecaca", "#fee2e2", "#f8fafc", "#e0e7ff", "#bfdbfe", "#93c5fd")
+    ),
+    color = styleInterval(0, c("#991b1b", "#1e40af")),
+    fontWeight = "600"
+  )
+```
+
+:::
